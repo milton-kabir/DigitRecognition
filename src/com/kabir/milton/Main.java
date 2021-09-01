@@ -1,211 +1,191 @@
 //package recognition;
 package com.kabir.milton;
 
-import java.io.*;
-import java.util.*;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Random;
+import java.util.Scanner;
 
-class NeuralNetwork implements Serializable {
+class Network implements Serializable {
+    double[][][] weight;
+    double[][] bias;
 
-    private static final long serialVersionUID = 7L;
-
-    private static final int numInputNeurons = 15;
-
-    private static final int numOutputNeurons = 10;
-
-    private final double[][] weights;
-
-    NeuralNetwork() {
-        weights = new double[numOutputNeurons][numInputNeurons + 1];
-    }
-
-    public void learn() {
-        NeuralNetworkUtils.gaussianRandom(weights);
-
-        for (int generation = 0; generation < 1000; generation++) {
-            nextGeneration();
-        }
-    }
-
-    private void nextGeneration() {
-        for (int outputNeuron = 0; outputNeuron < numOutputNeurons; outputNeuron++) {
-
-            double[] deltaWmean = new double[numInputNeurons];
-
-            for (int number = 0; number < numOutputNeurons; number++) {
-                double sum = 0;
-                for (int i = 0; i < numInputNeurons; i++) {
-                    sum += NeuralNetworkUtils.idealInputs[number][i] *
-                            weights[outputNeuron][i];
-                }
-                sum += weights[outputNeuron][numInputNeurons];
-
-                double o = NeuralNetworkUtils.sigmoid(sum);
-
-                int idealValue = number == outputNeuron ? 1 : 0;
-                for (int i = 0; i < numInputNeurons; i++) {
-                    double delta = NeuralNetworkUtils.ETA *
-                            NeuralNetworkUtils.idealInputs[number][i] *
-                            (idealValue - o);
-                    deltaWmean[i] += delta;
+    Network(int[] shape) {
+        weight = new double[shape.length - 1][][];
+        bias = new double[shape.length - 1][];
+        var r = new Random();
+        for (var l = 0; l < weight.length; l++) {
+            weight[l] = new double[shape[l + 1]][shape[l]];
+            bias[l] = new double[shape[l + 1]];
+            for (var i = 0; i < weight[l].length; i++) {
+                for (var j = 0; j < weight[l][i].length; j++) {
+                    weight[l][i][j] = r.nextGaussian() / Math.sqrt(weight[l][i].length);
                 }
             }
-
-            for (int i = 0; i < numInputNeurons; i++) {
-                weights[outputNeuron][i] += deltaWmean[i] / numOutputNeurons;
-            }
-
         }
     }
 
-    public int recognize(List<List<Integer>> matrix) {
-        List<Integer> inputNeurons = NeuralNetworkUtils.flatten(matrix);
-
-        List<Double> outputNeurons = new LinkedList<>();
-
-        for (int i = 0; i < numOutputNeurons; i++) {
-            double sum = 0;
-            for (int j = 0; j < numInputNeurons; j++) {
-                sum += inputNeurons.get(j) * weights[i][j];
-            }
-            sum += weights[i][numInputNeurons];
-
-            outputNeurons.add(sum);
-        }
-
-        return outputNeurons.indexOf(outputNeurons.
-                stream().
-                mapToDouble(v -> v).
-                max().getAsDouble());
-    }
-
-}
-
-abstract class NeuralNetworkUtils {
-
-    public static final double[][] idealInputs = {
-            {1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1},  //0
-            {0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0},  //1
-            {1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1},  //2
-            {1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1},  //3
-            {1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1},  //4
-            {1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1},  //5
-            {1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1},  //6
-            {1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1},  //7
-            {1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1},  //8
-            {1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1}   //9
-    };
-
-    public static final double ETA = 0.5;
-
-    public static void gaussianRandom(double[][] weights) {
-        Random random = new Random();
-        for (int i = 0; i < weights.length; i++) {
-            for (int j = 0; j < weights[i].length; j++) {
-                weights[i][j] = random.nextGaussian();
-            }
-        }
-    }
-
-    public static double sigmoid(double x) {
+    double sigmoid(double x) {
         return 1.0 / (1.0 + Math.exp(-x));
     }
 
-    public static List<Integer> flatten(List<List<Integer>> nestedList) {
-        List<Integer> ls = new LinkedList<>();
-        nestedList.forEach(ls::addAll);
-        return ls;
+    double[][] activation(double[] input) {
+        var activation = new double[weight.length + 1][];
+        activation[0] = input;
+        for (var l = 0; l < weight.length; l++) {
+            activation[l + 1] = new double[weight[l].length];
+            for (var i = 0; i < weight[l].length; i++) {
+                for (var j = 0; j < weight[l][i].length; j++) {
+                    activation[l + 1][i] += weight[l][i][j] * activation[l][j];
+                }
+                activation[l + 1][i] = sigmoid(activation[l + 1][i] + bias[l][i]);
+            }
+        }
+        return activation;
     }
 
-}
-
-class SerializationUtils {
-    /**
-     * Serialize the given object to the file
-     */
-    public static void serialize(Object obj, String fileName) throws IOException {
-        FileOutputStream fos = new FileOutputStream(fileName);
-        BufferedOutputStream bos = new BufferedOutputStream(fos);
-        ObjectOutputStream oos = new ObjectOutputStream(bos);
-        oos.writeObject(obj);
-        oos.close();
+    void trainSample(double[] input, double[] ideal, double[][][] gradW, double[][] gradB) {
+        var activation = activation(input);
+        var error = new double[activation[weight.length].length];
+        for (var i = 0; i < error.length; i++) {
+            error[i] = (activation[weight.length][i] - ideal[i]) / (activation[weight.length][i] * (1 - activation[weight.length][i]));
+        }
+        for (var l = weight.length - 1; l >= 0; l--) {
+            var nextError = new double[weight[l][0].length];
+            for (var i = 0; i < weight[l].length; i++) {
+                error[i] *= activation[l + 1][i] * (1 - activation[l + 1][i]);
+                for (var j = 0; j < weight[l][i].length; j++) {
+                    gradW[l][i][j] += error[i] * activation[l][j];
+                    nextError[j] += error[i] * weight[l][i][j];
+                }
+                gradB[l][i] += error[i];
+            }
+            error = nextError;
+        }
     }
 
-    /**
-     * Deserialize to an object from the file
-     */
-    public static Object deserialize(String fileName) throws IOException, ClassNotFoundException {
-        FileInputStream fis = new FileInputStream(fileName);
-        BufferedInputStream bis = new BufferedInputStream(fis);
-        ObjectInputStream ois = new ObjectInputStream(bis);
-        Object obj = ois.readObject();
-        ois.close();
-        return obj;
+    void trainBatch(double[][] inputs, double[][] ideals) {
+        var gradW = new double[weight.length][][];
+        var gradB = new double[bias.length][];
+        for (var l = 0; l < weight.length; l++) {
+            gradW[l] = new double[weight[l].length][weight[l][0].length];
+            gradB[l] = new double[bias[l].length];
+        }
+        for (var k = 0; k < inputs.length; k++) {
+            trainSample(inputs[k], ideals[k], gradW, gradB);
+        }
+        for (var l = 0; l < weight.length; l++) {
+            for (var i = 0; i < weight[l].length; i++) {
+                for (var j = 0; j < weight[l][i].length; j++) {
+                    weight[l][i][j] -= gradW[l][i][j] / inputs.length;
+                }
+                bias[l][i] -= bias[l][i] / inputs.length;
+            }
+        }
     }
 }
 
 public class Main {
-
-    public static Scanner scanner = new Scanner(System.in);
-
-    public static void main(String[] args) {
-
-        System.out.println("1. Learn the network\n" +
-                "2. Guess a number");
+    public static void main(String[] args) throws Exception {
+        var sc = new Scanner(System.in);
+        System.out.println("1. Train the network");
+        System.out.println("2. Guess a number");
         System.out.print("Your choice: ");
-
-        int choice = Integer.parseInt(scanner.nextLine());
-
-        switch (choice) {
-            case 1: {
-                learning();
-                break;
+        var choice = sc.nextInt();
+        if (choice == 1) {
+            System.out.print("Enter the sizes of the layers: ");
+            var s = new Scanner(System.in).nextLine().trim().split("\\s+");
+            var shape = new int[s.length];
+            for (var l = 0; l < shape.length; l++) {
+                shape[l] = Integer.parseInt(s[l]);
             }
-            case 2: {
-                learning();
-                guessing();
-                break;
-            }
+            System.out.println("Learning...");
+            train(shape);
+            System.out.println("Done! Saved to the file.");
+        } else if (choice == 2) {
+            train(new int[]{15, 12, 12, 10});
+            guess();
         }
     }
 
-    public static void learning() {
+    public static void train(int[] shape) throws Exception {
+        var inputs = new double[][]{
+                new double[]{0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1},
+                new double[]{1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1},
+                new double[]{1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1},
+                new double[]{1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1},
+                new double[]{1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0},
+                new double[]{0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1},
+                new double[]{0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0},
+                new double[]{1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1},
+                new double[]{1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1},
+                new double[]{1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1},
+                new double[]{1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1},
+                new double[]{1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1},
+                new double[]{1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1},
+                new double[]{1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1},
+        };
+        var ideals = new double[][]{
+                new double[]{0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 1, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+                new double[]{1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 1, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 0, 1, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 1, 0, 0, 0},
+                new double[]{1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 1, 0, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 1, 0, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 1, 0, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 0, 1, 0},
+                new double[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        };
 
-        NeuralNetwork network = new NeuralNetwork();
-
-        System.out.println("Learning...");
-
-        network.learn();
-        try {
-            SerializationUtils.serialize(network, "network.data");
-        } catch (IOException e) {
-            e.printStackTrace();
+        var network = new Network(shape);
+        for (var epoch = 0; epoch < 1000; epoch++) {
+            network.trainBatch(inputs, ideals);
         }
 
-        System.out.println("Done! Saved to the file.");
+        new ObjectOutputStream(Files.newOutputStream(Path.of("network"))).writeObject(network);
     }
 
-    public static void guessing() {
-
-        NeuralNetwork network = new NeuralNetwork();
-        try {
-            network = (NeuralNetwork) SerializationUtils.deserialize("network.data");
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-
+    public static void guess() throws Exception {
+        var sc = new Scanner(System.in).useDelimiter("\\s*");
         System.out.println("Input grid:");
-        List<List<Integer>> matrix = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
-            String row = scanner.nextLine();
-            List<Integer> rowAsListOfIntegers = new ArrayList<>();
-            for (char c : row.toCharArray()) {
-                rowAsListOfIntegers.add(c == 'X' ? 1 : 0);
-            }
-            matrix.add(rowAsListOfIntegers);
+        var input = new double[15];
+        for (var j = 0; j < input.length; j++) {
+            input[j] = sc.next().equals("X") ? 1 : 0;
         }
 
-        System.out.println("This number is " + network.recognize(matrix));
+        var network = (Network) new ObjectInputStream(Files.newInputStream(Path.of("network"))).readObject();
+        var activation = network.activation(input);
+        var output = activation[activation.length - 1];
+
+        System.out.print("Output:");
+        var digit = 0;
+        for (var i = 0; i < output.length; i++) {
+            System.out.printf(" (%d, %.3f)", i, output[i]);
+            if (output[i] > output[digit]) {
+                digit = i;
+            }
+        }
+        System.out.println();
+        System.out.printf("This number is %d%n", digit);
     }
-
-
 }
